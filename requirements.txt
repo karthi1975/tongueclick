@@ -1,0 +1,25 @@
+# Tongue Click Sound Recognition - Dependencies
+
+# Core audio and signal processing
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Audio I/O
+sounddevice>=0.4.6
+
+# Audio feature extraction
+librosa>=0.10.0
+
+# Additional dependencies for librosa
+numba>=0.56.0
+audioread>=3.0.0
+scikit-learn>=1.2.0
+
+# Machine learning
+joblib>=1.2.0
+
+# Audio file I/O
+soundfile>=0.11.0
+
+# Mouse automation (optional)
+pyautogui>=0.9.54
