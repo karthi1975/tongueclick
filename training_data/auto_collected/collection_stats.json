@@ -1,0 +1,10 @@
+{
+  "saved": 32220,
+  "skipped": 140579,
+  "elapsed_seconds": 86400.18873286247,
+  "started": "2026-02-12T17:43:22.593152",
+  "ended": "2026-02-13T17:43:22.782397",
+  "sample_rate": 44100,
+  "chunk_duration": 0.5,
+  "min_energy": 0.02
+}
