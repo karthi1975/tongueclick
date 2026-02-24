@@ -534,32 +534,53 @@ def list_audio_devices():
 # ============================================================================
 
 if __name__ == "__main__":
-    # Configuration - TUNED for YOUR tongue clicks based on analysis
-    # These values filter out speech while catching tongue clicks
-    config = DetectorConfig(
-        sample_rate=44100,
-        threshold=8.0,                    # Onset: Clicks=10-25, Speech=0-7
-        confidence_threshold=0.65,        # Balanced
-        min_spectral_centroid=2200,       # Freq: Clicks=2000-4300Hz, Speech<2000Hz
-        min_peak_to_mean_ratio=1.6,       # Ratio: Clicks=1.6-2.4x, Speech<1.6x
-        min_energy_threshold=0.01         # Ignore quiet sounds
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Tongue Click Detector - Real-time tongue click detection",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python tongue_click_detector.py                          # Default settings
+  python tongue_click_detector.py --threshold 6.0          # More sensitive
+  python tongue_click_detector.py --threshold 12.0         # Stricter (noisy env)
+  python tongue_click_detector.py --duration 30            # Listen for 30 seconds
+  python tongue_click_detector.py --confidence 0.75        # Higher confidence
+  python tongue_click_detector.py --file recording.wav     # Analyze a file
+
+Presets:
+  Sensitive:  --threshold 6.0 --confidence 0.55 --centroid 2000 --peak-ratio 1.5
+  Default:    --threshold 8.0 --confidence 0.65 --centroid 2200 --peak-ratio 1.6
+  Strict:     --threshold 12.0 --confidence 0.75 --centroid 2500 --peak-ratio 1.8
+        """
     )
+    parser.add_argument('--threshold', type=float, default=8.0,
+                        help='Onset detection threshold (default: 8.0, lower=more sensitive)')
+    parser.add_argument('--confidence', type=float, default=0.65,
+                        help='Confidence threshold 0-1 (default: 0.65)')
+    parser.add_argument('--centroid', type=float, default=2200,
+                        help='Min spectral centroid in Hz (default: 2200)')
+    parser.add_argument('--peak-ratio', type=float, default=1.6,
+                        help='Min peak-to-mean ratio (default: 1.6)')
+    parser.add_argument('--energy', type=float, default=0.01,
+                        help='Min energy threshold (default: 0.01)')
+    parser.add_argument('--duration', type=int, default=10,
+                        help='Listening duration in seconds (default: 10)')
+    parser.add_argument('--sample-rate', type=int, default=44100,
+                        help='Audio sample rate in Hz (default: 44100)')
+    parser.add_argument('--file', type=str, default=None,
+                        help='Analyze an audio file instead of real-time')
 
-    # For MORE SENSITIVE (catch softer clicks):
-    # config = DetectorConfig(
-    #     threshold=6.0,                  # Lower onset threshold
-    #     confidence_threshold=0.55,
-    #     min_spectral_centroid=2000,
-    #     min_peak_to_mean_ratio=1.5
-    # )
+    args = parser.parse_args()
 
-    # For MORE STRICT (noisy environment):
-    # config = DetectorConfig(
-    #     threshold=12.0,                 # Higher onset threshold
-    #     confidence_threshold=0.75,
-    #     min_spectral_centroid=2500,
-    #     min_peak_to_mean_ratio=1.8
-    # )
+    config = DetectorConfig(
+        sample_rate=args.sample_rate,
+        threshold=args.threshold,
+        confidence_threshold=args.confidence,
+        min_spectral_centroid=args.centroid,
+        min_peak_to_mean_ratio=args.peak_ratio,
+        min_energy_threshold=args.energy,
+    )
 
     # Create detector using factory (Dependency Injection)
     detector = DetectorFactory.create_default_detector(config)
@@ -569,22 +590,23 @@ if __name__ == "__main__":
     list_audio_devices()
     print("=" * 60)
 
-    # Real-time detection example
-    print("\nStarting real-time detection...")
-    print("Press Ctrl+C to stop early")
+    if args.file:
+        # File analysis mode
+        print(f"\nAnalyzing file: {args.file}")
+        file_source = DetectorFactory.create_file_source(args.file, config)
+        event_handler = ConsoleEventHandler()
+        results = file_source.process_audio(
+            detector=detector,
+            callback=lambda result: event_handler.on_click_detected(result)
+        )
+    else:
+        # Real-time detection mode
+        print(f"\nStarting real-time detection (duration: {args.duration}s, threshold: {args.threshold})...")
+        print("Press Ctrl+C to stop early")
 
-    # Create audio source (Strategy pattern - can swap implementations)
-    audio_source = DetectorFactory.create_real_time_source(config, duration=10)
-
-    # Optional: Add event handler
-    event_handler = ConsoleEventHandler()
-
-    # Process audio
-    results = audio_source.process_audio(
-        detector=detector,
-        callback=lambda result: event_handler.on_click_detected(result)
-    )
-
-    # File analysis example (commented out)
-    # file_source = DetectorFactory.create_file_source("click_sample.wav", config)
-    # file_results = file_source.process_audio(detector)
+        audio_source = DetectorFactory.create_real_time_source(config, duration=args.duration)
+        event_handler = ConsoleEventHandler()
+        results = audio_source.process_audio(
+            detector=detector,
+            callback=lambda result: event_handler.on_click_detected(result)
+        )

@@ -23,7 +23,7 @@ class MLTongueClickDetector:
                  scaler_path: str = 'models/scaler.pkl',
                  sample_rate: int = 44100,
                  confidence_threshold: float = 0.7,
-                 min_energy: float = 0.01):
+                 min_energy: float = 0.02):
         """
         Initialize ML-based detector.
 
@@ -264,7 +264,7 @@ Examples:
                        help='Confidence threshold (0-1, default: 0.7)')
     parser.add_argument('--model-dir', type=str, default='models',
                        help='Directory containing model files')
-    parser.add_argument('--min-energy', type=float, default=0.01,
+    parser.add_argument('--min-energy', type=float, default=0.02,
                        help='Minimum energy threshold')
 
     args = parser.parse_args()

@@ -76,7 +76,7 @@ def collect_clicks(output_dir='training_data/positives', count=50,
             peak = np.max(np.abs(audio))
             print(f"  Recording done. (peak energy: {peak:.3f})")
 
-            if peak < 0.01:
+            if peak < 0.002:
                 print(f"  Too quiet -- skipping.")
                 skipped += 1
                 continue

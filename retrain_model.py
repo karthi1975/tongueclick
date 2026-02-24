@@ -139,7 +139,7 @@ class TongueClickModelTrainer:
             chunk = audio[i:i + chunk_samples]
 
             # Only process if sufficient energy
-            if np.max(np.abs(chunk)) > 0.01:
+            if np.max(np.abs(chunk)) > 0.02:
                 try:
                     features = self.feature_extractor.extract_all_features(chunk)
                     feature_vector = self.feature_extractor.features_to_vector(features)

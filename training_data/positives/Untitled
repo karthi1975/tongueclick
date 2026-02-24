@@ -1,0 +1,76 @@
+zsh: command not found: --positive
+(venv) karthi@Mac tongue_click % python retrain_model.py \
+      --positive training_data/positives \
+      --negative training_data/auto_collected
+
+
+======================================================================
+LOADING DATASET
+======================================================================
+
+Loading positive samples from: training_data/positives
+  Extracted 142707 feature vectors
+
+Loading negative samples from: training_data/auto_collected
+  Extracted 141611 feature vectors
+
+Positive samples: 142707
+Negative samples: 141611
+Total samples: 284318
+Feature dimensions: 26
+
+======================================================================
+TRAINING MODEL
+======================================================================
+
+Training set: 227454 samples
+Test set: 56864 samples
+
+Scaling features...
+
+Training random_forest model...
+
+======================================================================
+EVALUATION
+======================================================================
+
+Training accuracy: 99.72%
+Test accuracy: 99.46%
+Cross-validation accuracy: 99.44% (+/- 0.03%)
+
+Classification Report:
+              precision    recall  f1-score   support
+
+   Not Click       0.99      1.00      0.99     28322
+Tongue Click       1.00      0.99      0.99     28542
+
+    accuracy                           0.99     56864
+   macro avg       0.99      0.99      0.99     56864
+weighted avg       0.99      0.99      0.99     56864
+
+
+Confusion Matrix:
+                 Predicted
+              Not Click  Click
+Actual Not Click   28267      55
+       Click         253   28289
+
+Top 10 Most Important Features:
+  1. spectral_bandwidth  : 0.2729
+  2. spectral_rolloff    : 0.1530
+  3. mfcc_2              : 0.1032
+  4. spectral_flatness   : 0.0654
+  5. mfcc_1              : 0.0620
+  6. zcr                 : 0.0547
+  7. spectral_centroid   : 0.0535
+  8. mfcc_3              : 0.0419
+  9. spectral_flux       : 0.0404
+  10. centroid_variance   : 0.0217
+
+✓ Model saved to: models/tongue_click_model.pkl
+✓ Scaler saved to: models/scaler.pkl
+
+======================================================================
+TRAINING COMPLETE!
+======================================================================
+(venv) karthi@Mac tongue_click % 
