@@ -92,7 +92,8 @@ class MLTongueClickDetector:
             return False, 0.0
 
     def real_time_detection(self, duration: int = 10,
-                           callback: Optional[Callable] = None) -> List[dict]:
+                           callback: Optional[Callable] = None,
+                           device: Optional[int] = None) -> List[dict]:
         """
         Perform real-time tongue click detection.
         Memory-safe for long-running sessions (24h+).
@@ -166,7 +167,8 @@ class MLTongueClickDetector:
             with sd.InputStream(callback=audio_callback,
                               channels=1,
                               samplerate=self.sample_rate,
-                              blocksize=chunk_samples):
+                              blocksize=chunk_samples,
+                              device=device):
                 sd.sleep(int(duration * 1000))
         except KeyboardInterrupt:
             print("\n\nStopped by user")
@@ -266,8 +268,17 @@ Examples:
                        help='Directory containing model files')
     parser.add_argument('--min-energy', type=float, default=0.02,
                        help='Minimum energy threshold')
+    parser.add_argument('--device', type=int, default=None,
+                       help='Audio input device index (run with --list-devices to see options)')
+    parser.add_argument('--list-devices', action='store_true',
+                       help='List available audio devices and exit')
 
     args = parser.parse_args()
+
+    if args.list_devices:
+        print("\nAvailable audio devices:")
+        print(sd.query_devices())
+        return
 
     # Initialize detector
     try:
@@ -285,7 +296,7 @@ Examples:
 
     # Run detection
     if args.mode == 'realtime':
-        detections = detector.real_time_detection(duration=args.duration)
+        detections = detector.real_time_detection(duration=args.duration, device=args.device)
 
     elif args.mode == 'file':
         if not args.input:
