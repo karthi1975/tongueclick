@@ -113,7 +113,7 @@ class MLTongueClickDetector:
         print(f"\nListening for {duration} seconds...")
         print(f"Confidence threshold: {self.confidence_threshold}")
         print("\nMake tongue click sounds!")
-        print("Press Ctrl+C to stop early\n")
+        print("Press Ctrl+C to stop early\n", flush=True)
 
         detections = []
         total_click_count = [0]
@@ -148,7 +148,7 @@ class MLTongueClickDetector:
                     total_click_count[0] += 1
 
                     print(f"✓ CLICK detected at {timestamp:.2f}s "
-                          f"(confidence: {confidence:.2%})")
+                          f"(confidence: {confidence:.2%})", flush=True)
 
                     if callback:
                         callback(timestamp, confidence)
