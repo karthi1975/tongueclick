@@ -119,7 +119,10 @@ class MLTongueClickDetector:
         total_click_count = [0]
         gc_counter = [0]
         start_time = time.time()
-        chunk_duration = 0.1  # 100ms chunks
+        # Ensure chunk has enough samples for FFT (n_fft=2048)
+        # At 16000Hz, need at least 2048 samples = 128ms
+        min_chunk_samples = 2048
+        chunk_duration = max(0.1, min_chunk_samples / self.sample_rate + 0.01)
         chunk_samples = int(self.sample_rate * chunk_duration)
 
         def audio_callback(indata, frames, time_info, status):
@@ -204,7 +207,8 @@ class MLTongueClickDetector:
         print(f"Confidence threshold: {self.confidence_threshold}\n")
 
         detections = []
-        chunk_duration = 0.1
+        min_chunk_samples = 2048
+        chunk_duration = max(0.1, min_chunk_samples / self.sample_rate + 0.01)
         chunk_samples = int(chunk_duration * self.sample_rate)
         hop_samples = chunk_samples // 2  # 50% overlap
 
