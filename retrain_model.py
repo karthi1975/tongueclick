@@ -128,8 +128,9 @@ class TongueClickModelTrainer:
         # Load audio
         audio, sr = librosa.load(filepath, sr=self.sample_rate)
 
-        # Split into chunks
-        chunk_samples = int(chunk_duration * self.sample_rate)
+        # Split into chunks (ensure enough samples for FFT n_fft=2048)
+        min_chunk_duration = max(chunk_duration, 2048 / self.sample_rate + 0.01)
+        chunk_samples = int(min_chunk_duration * self.sample_rate)
         features_list = []
 
         # Use 50% overlap

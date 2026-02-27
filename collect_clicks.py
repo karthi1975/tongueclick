@@ -26,7 +26,7 @@ from datetime import datetime
 
 
 def collect_clicks(output_dir='training_data/positives', count=50,
-                   duration=3.0, sample_rate=44100):
+                   duration=3.0, sample_rate=44100, device=None):
     """Record tongue click samples one at a time with countdown."""
     os.makedirs(output_dir, exist_ok=True)
 
@@ -69,7 +69,8 @@ def collect_clicks(output_dir='training_data/positives', count=50,
                 int(duration * sample_rate),
                 samplerate=sample_rate,
                 channels=1,
-                dtype='float32'
+                dtype='float32',
+                device=device
             )
             sd.wait()
 
@@ -179,6 +180,8 @@ Full workflow:
     parser.add_argument('--output-dir', type=str,
                         default='training_data/positives',
                         help='Output directory (default: training_data/positives)')
+    parser.add_argument('--device', type=int, default=None,
+                        help='Audio input device index')
     parser.add_argument('--review', action='store_true',
                         help='Review collected samples')
 
@@ -192,6 +195,7 @@ Full workflow:
             count=args.count,
             duration=args.duration,
             sample_rate=args.sample_rate,
+            device=args.device,
         )
 
 

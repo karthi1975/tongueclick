@@ -17,7 +17,7 @@ from datetime import datetime
 
 def collect(label, output_dir='training_data/auto_collected',
             duration=60, chunk_duration=0.5, sample_rate=44100,
-            min_energy=0.005):
+            min_energy=0.005, device=None):
     """Record and save hard negative samples in chunks."""
     os.makedirs(output_dir, exist_ok=True)
 
@@ -44,7 +44,7 @@ def collect(label, output_dir='training_data/auto_collected',
         # Record full duration
         total_samples = int(duration * sample_rate)
         audio = sd.rec(total_samples, samplerate=sample_rate,
-                       channels=1, dtype='float32')
+                       channels=1, dtype='float32', device=device)
         sd.wait()
 
         print("Recording done. Processing chunks...\n")
@@ -105,6 +105,8 @@ Examples:
                         help='Minimum energy to save a chunk (default: 0.005)')
     parser.add_argument('--sample-rate', type=int, default=44100,
                         help='Sample rate (default: 44100)')
+    parser.add_argument('--device', type=int, default=None,
+                        help='Audio input device index')
 
     args = parser.parse_args()
 
@@ -115,6 +117,7 @@ Examples:
         chunk_duration=args.chunk_duration,
         sample_rate=args.sample_rate,
         min_energy=args.min_energy,
+        device=args.device,
     )
 
     print("Next steps:")
