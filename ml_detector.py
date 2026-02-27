@@ -35,6 +35,7 @@ class MLTongueClickDetector:
             min_energy: Minimum energy threshold to process audio
         """
         self.sample_rate = sample_rate
+        self.model_sample_rate = 44100  # Model was trained at 44100Hz
         self.confidence_threshold = confidence_threshold
         self.min_energy = min_energy
 
@@ -44,8 +45,8 @@ class MLTongueClickDetector:
         self.scaler = joblib.load(scaler_path)
         print("✓ Model loaded successfully")
 
-        # Initialize feature extractor
-        self.feature_extractor = AdvancedFeatureExtractor(sample_rate)
+        # Feature extractor always runs at model's training sample rate
+        self.feature_extractor = AdvancedFeatureExtractor(self.model_sample_rate)
 
         # Rate limiting (prevent too frequent detections)
         self.last_detection_time = 0
@@ -66,6 +67,14 @@ class MLTongueClickDetector:
             return False, 0.0
 
         try:
+            # Resample to model's training rate if needed
+            if self.sample_rate != self.model_sample_rate:
+                import librosa
+                audio_chunk = librosa.resample(
+                    audio_chunk, orig_sr=self.sample_rate,
+                    target_sr=self.model_sample_rate
+                )
+
             # Extract features
             features = self.feature_extractor.extract_all_features(audio_chunk)
             feature_vector = self.feature_extractor.features_to_vector(features)
