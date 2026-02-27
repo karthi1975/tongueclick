@@ -268,6 +268,8 @@ Examples:
                        help='Directory containing model files')
     parser.add_argument('--min-energy', type=float, default=0.02,
                        help='Minimum energy threshold')
+    parser.add_argument('--sample-rate', type=int, default=44100,
+                       help='Audio sample rate in Hz (default: 44100, Jabra uses 16000)')
     parser.add_argument('--device', type=int, default=None,
                        help='Audio input device index (run with --list-devices to see options)')
     parser.add_argument('--list-devices', action='store_true',
@@ -285,6 +287,7 @@ Examples:
         detector = MLTongueClickDetector(
             model_path=f"{args.model_dir}/tongue_click_model.pkl",
             scaler_path=f"{args.model_dir}/scaler.pkl",
+            sample_rate=args.sample_rate,
             confidence_threshold=args.threshold,
             min_energy=args.min_energy
         )
