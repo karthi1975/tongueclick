@@ -106,6 +106,8 @@ class MLTongueClickDetector:
             List of most recent detected clicks with timestamps and confidence
         """
         import gc
+        import threading
+        import queue
 
         print(f"\n{'='*70}")
         print("ML-BASED TONGUE CLICK DETECTION")
@@ -119,6 +121,9 @@ class MLTongueClickDetector:
         total_click_count = [0]
         gc_counter = [0]
         start_time = time.time()
+        audio_queue = queue.Queue(maxsize=50)
+        stop_event = threading.Event()
+
         # Ensure chunk has enough samples for FFT (n_fft=2048)
         # At 16000Hz, need at least 2048 samples = 128ms
         min_chunk_samples = 2048
@@ -126,45 +131,52 @@ class MLTongueClickDetector:
         chunk_samples = int(self.sample_rate * chunk_duration)
 
         def audio_callback(indata, frames, time_info, status):
-            """Process incoming audio."""
-            if status:
-                print(f"Stream status: {status}")
+            """Quickly copy audio to queue — no heavy processing here."""
+            try:
+                audio_queue.put_nowait(indata[:, 0].copy())
+            except queue.Full:
+                pass  # Drop chunk if processing can't keep up
 
-            audio_chunk = indata[:, 0]  # Mono
+        def processing_thread():
+            """Process audio chunks from queue in a separate thread."""
+            while not stop_event.is_set():
+                try:
+                    audio_chunk = audio_queue.get(timeout=0.5)
+                except queue.Empty:
+                    continue
 
-            # Detect
-            is_click, confidence = self.detect(audio_chunk)
+                is_click, confidence = self.detect(audio_chunk)
 
-            if is_click:
-                current_time = time.time()
-                timestamp = current_time - start_time
+                if is_click:
+                    current_time = time.time()
+                    timestamp = current_time - start_time
 
-                # Rate limiting
-                if current_time - self.last_detection_time >= self.min_detection_interval:
-                    self.last_detection_time = current_time
+                    if current_time - self.last_detection_time >= self.min_detection_interval:
+                        self.last_detection_time = current_time
 
-                    detection = {
-                        'timestamp': timestamp,
-                        'confidence': confidence
-                    }
-                    detections.append(detection)
-                    total_click_count[0] += 1
+                        detection = {
+                            'timestamp': timestamp,
+                            'confidence': confidence
+                        }
+                        detections.append(detection)
+                        total_click_count[0] += 1
 
-                    print(f"✓ CLICK detected at {timestamp:.2f}s "
-                          f"(confidence: {confidence:.2%})", flush=True)
+                        print(f"✓ CLICK detected at {timestamp:.2f}s "
+                              f"(confidence: {confidence:.2%})", flush=True)
 
-                    if callback:
-                        callback(timestamp, confidence)
+                        if callback:
+                            callback(timestamp, confidence)
 
-                    # Trim detections list to prevent unbounded memory growth
-                    if len(detections) > self.MAX_DETECTIONS_IN_MEMORY:
-                        del detections[:self.MAX_DETECTIONS_IN_MEMORY // 2]
+                        if len(detections) > self.MAX_DETECTIONS_IN_MEMORY:
+                            del detections[:self.MAX_DETECTIONS_IN_MEMORY // 2]
 
-            # Periodic GC every ~60 seconds (600 chunks at 100ms each)
-            gc_counter[0] += 1
-            if gc_counter[0] >= 600:
-                gc_counter[0] = 0
-                gc.collect()
+                gc_counter[0] += 1
+                if gc_counter[0] >= 600:
+                    gc_counter[0] = 0
+                    gc.collect()
+
+        processor = threading.Thread(target=processing_thread, daemon=True)
+        processor.start()
 
         try:
             with sd.InputStream(callback=audio_callback,
@@ -175,6 +187,9 @@ class MLTongueClickDetector:
                 sd.sleep(int(duration * 1000))
         except KeyboardInterrupt:
             print("\n\nStopped by user")
+        finally:
+            stop_event.set()
+            processor.join(timeout=2)
 
         print(f"\n{'='*70}")
         print(f"Total clicks detected: {total_click_count[0]}")
