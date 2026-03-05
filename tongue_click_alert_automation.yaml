@@ -1,0 +1,29 @@
+alias: Tongue Click Alert
+description: Announce on Jarvis when tongue clicks detected
+triggers:
+  - webhook_id: tongue_click_alert
+    allowed_methods:
+      - POST
+    local_only: false
+    trigger: webhook
+conditions: []
+actions:
+  - action: assist_satellite.announce
+    target:
+      device_id: a4113502682600e44f064516d962e411
+    data:
+      message: Becca needs help, Becca needs help
+      preannounce: true
+      preannounce_media_id:
+        media_content_id: media-source://media_source/local/SCHOOL_BELL_SGo.wav
+        media_content_type: audio/x-wav
+        metadata:
+          title: SCHOOL_BELL_SGo.wav
+          thumbnail: null
+          media_class: music
+          children_media_class: null
+          navigateIds:
+            - {}
+            - media_content_type: app
+              media_content_id: media-source://media_source
+mode: single
