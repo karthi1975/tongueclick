@@ -103,6 +103,9 @@ class CallForAttention:
         print("Loading ML model...")
         self.model = joblib.load(model_path)
         self.scaler = joblib.load(scaler_path)
+        # Force single-threaded prediction (prevents warning spam on Pi)
+        if hasattr(self.model, 'n_jobs'):
+            self.model.n_jobs = 1
         print(f"  Model loaded from: {model_path}")
 
         # Feature extractor at model's training sample rate
