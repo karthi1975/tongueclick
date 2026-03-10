@@ -23,6 +23,9 @@ Usage:
     python call_for_attention.py --list-devices
 """
 
+import warnings
+warnings.filterwarnings("ignore")
+
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
