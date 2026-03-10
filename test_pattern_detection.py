@@ -32,7 +32,7 @@ from call_for_attention import CallForAttention
 
 
 class TestPatternDetection(unittest.TestCase):
-    """Test the 2-pause-2 confirmation pattern with rhythm validation."""
+    """Test the 3-pause-3 confirmation pattern with rhythm validation."""
 
     def _make_listener(self, **kwargs):
         """Create a CallForAttention instance with mocked model/scaler."""
@@ -41,7 +41,7 @@ class TestPatternDetection(unittest.TestCase):
             scaler_path='models/scaler.pkl',
             sample_rate=44100,
             confidence_threshold=0.93,
-            clicks_per_group=2,
+            clicks_per_group=3,
             group_timeout=3.0,
             pause_min=0.2,
             pause_max=5.0,
@@ -86,7 +86,7 @@ class TestPatternDetection(unittest.TestCase):
         self.assertTrue(listener._check_rhythm([1.0]))
 
     def test_full_pattern_triggers_webhook(self):
-        """2 clicks, pause, 2 clicks should trigger webhook."""
+        """3 clicks, pause, 3 clicks should trigger webhook."""
         listener = self._make_listener()
 
         with patch.object(listener, '_trigger_webhook') as mock_trigger, \
@@ -94,24 +94,30 @@ class TestPatternDetection(unittest.TestCase):
 
             base = time.time()
 
-            # Group 1: 2 clicks
+            # Group 1: 3 clicks
             with patch('time.time', return_value=base):
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 1/3
             with patch('time.time', return_value=base + 0.5):
                 listener.last_click_time = base
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 2/3
+            with patch('time.time', return_value=base + 1.0):
+                listener.last_click_time = base + 0.5
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 3/3
 
             self.assertEqual(listener.state, 'waiting_pause')
 
-            # Pause (1.0s) then Group 2: 2 clicks
-            with patch('time.time', return_value=base + 1.5):
-                listener.last_click_time = base + 0.5
-                listener._on_click_detected(self.AUDIO, 0.94)
+            # Pause (1.0s) then Group 2: 3 clicks
+            with patch('time.time', return_value=base + 2.0):
+                listener.last_click_time = base + 1.0
+                listener._on_click_detected(self.AUDIO, 0.94)  # click 1/3
             self.assertEqual(listener.state, 'waiting_second_group')
 
-            with patch('time.time', return_value=base + 2.0):
-                listener.last_click_time = base + 1.5
-                listener._on_click_detected(self.AUDIO, 0.95)
+            with patch('time.time', return_value=base + 2.5):
+                listener.last_click_time = base + 2.0
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 2/3
+            with patch('time.time', return_value=base + 3.0):
+                listener.last_click_time = base + 2.5
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 3/3
 
             mock_trigger.assert_called_once()
             self.assertEqual(listener.state, 'waiting_first_group')
@@ -123,18 +129,21 @@ class TestPatternDetection(unittest.TestCase):
         with patch.object(listener, '_save_audio', return_value=None):
             base = time.time()
 
-            # Group 1: 2 clicks
+            # Group 1: 3 clicks
             with patch('time.time', return_value=base):
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 1/3
             with patch('time.time', return_value=base + 0.5):
                 listener.last_click_time = base
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 2/3
+            with patch('time.time', return_value=base + 1.0):
+                listener.last_click_time = base + 0.5
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 3/3
 
             self.assertEqual(listener.state, 'waiting_pause')
 
             # Click too soon (0.16s pause < pause_min 0.2s, past debounce 0.15s)
-            with patch('time.time', return_value=base + 0.66):
-                listener.last_click_time = base + 0.5
+            with patch('time.time', return_value=base + 1.16):
+                listener.last_click_time = base + 1.0
                 listener._on_click_detected(self.AUDIO, 0.94)
 
             self.assertEqual(listener.state, 'waiting_first_group')
@@ -146,18 +155,21 @@ class TestPatternDetection(unittest.TestCase):
         with patch.object(listener, '_save_audio', return_value=None):
             base = time.time()
 
-            # Group 1: 2 clicks
+            # Group 1: 3 clicks
             with patch('time.time', return_value=base):
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 1/3
             with patch('time.time', return_value=base + 0.5):
                 listener.last_click_time = base
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 2/3
+            with patch('time.time', return_value=base + 1.0):
+                listener.last_click_time = base + 0.5
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 3/3
 
             self.assertEqual(listener.state, 'waiting_pause')
-            listener.first_group_end_time = base + 0.5
+            listener.first_group_end_time = base + 1.0
 
             # Timeout check after 6s (> pause_max 5.0s)
-            with patch('time.time', return_value=base + 6.5):
+            with patch('time.time', return_value=base + 7.0):
                 listener._check_timeout()
 
             self.assertEqual(listener.state, 'waiting_first_group')
@@ -228,12 +240,15 @@ class TestPatternDetection(unittest.TestCase):
 
             base = time.time()
 
-            # Complete group 1 only (2 clicks)
+            # Complete group 1 only (3 clicks)
             with patch('time.time', return_value=base):
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 1/3
             with patch('time.time', return_value=base + 0.5):
                 listener.last_click_time = base
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 2/3
+            with patch('time.time', return_value=base + 1.0):
+                listener.last_click_time = base + 0.5
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 3/3
 
             mock_trigger.assert_not_called()
 
@@ -246,24 +261,30 @@ class TestPatternDetection(unittest.TestCase):
 
             base = time.time()
 
-            # Group 1
+            # Group 1: 3 clicks
             with patch('time.time', return_value=base):
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 1/3
             with patch('time.time', return_value=base + 0.5):
                 listener.last_click_time = base
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 2/3
+            with patch('time.time', return_value=base + 1.0):
+                listener.last_click_time = base + 0.5
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 3/3
 
             self.assertEqual(listener.state, 'waiting_pause')
 
             # 4 second pause (within 5.0s max)
-            with patch('time.time', return_value=base + 4.5):
-                listener.last_click_time = base + 0.5
-                listener._on_click_detected(self.AUDIO, 0.94)
+            with patch('time.time', return_value=base + 5.0):
+                listener.last_click_time = base + 1.0
+                listener._on_click_detected(self.AUDIO, 0.94)  # click 1/3
             self.assertEqual(listener.state, 'waiting_second_group')
 
-            with patch('time.time', return_value=base + 5.0):
-                listener.last_click_time = base + 4.5
-                listener._on_click_detected(self.AUDIO, 0.95)
+            with patch('time.time', return_value=base + 5.5):
+                listener.last_click_time = base + 5.0
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 2/3
+            with patch('time.time', return_value=base + 6.0):
+                listener.last_click_time = base + 5.5
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 3/3
 
             mock_trigger.assert_called_once()
 
@@ -274,20 +295,23 @@ class TestPatternDetection(unittest.TestCase):
         with patch.object(listener, '_save_audio', return_value=None):
             base = time.time()
 
-            # Complete group 1
+            # Complete group 1: 3 clicks
             with patch('time.time', return_value=base):
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 1/3
             with patch('time.time', return_value=base + 0.5):
                 listener.last_click_time = base
-                listener._on_click_detected(self.AUDIO, 0.95)
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 2/3
+            with patch('time.time', return_value=base + 1.0):
+                listener.last_click_time = base + 0.5
+                listener._on_click_detected(self.AUDIO, 0.95)  # click 3/3
 
             self.assertEqual(listener.state, 'waiting_pause')
             # click_times is empty after entering pause state
             self.assertEqual(listener.click_times, [])
 
             # Click too soon (0.15s pause < pause_min 0.2s, but past debounce)
-            with patch('time.time', return_value=base + 0.65):
-                listener.last_click_time = base + 0.5
+            with patch('time.time', return_value=base + 1.15):
+                listener.last_click_time = base + 1.0
                 listener._on_click_detected(self.AUDIO, 0.94)
 
             # Must reset back to first group, not get stuck

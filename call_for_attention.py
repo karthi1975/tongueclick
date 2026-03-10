@@ -57,7 +57,7 @@ class CallForAttention:
                  confidence_threshold=0.93,
                  min_energy=0.02,
                  webhook_url='https://ut-beachhome.homeadapt.us/api/webhook/tongue_click_alert',
-                 clicks_per_group=2,
+                 clicks_per_group=3,
                  group_timeout=3.0,
                  pause_min=0.2,
                  pause_max=5.0,
@@ -240,18 +240,15 @@ class CallForAttention:
         print("*" * 60, flush=True)
         print("*" * 60, flush=True)
 
-        # TODO: Re-enable webhook after testing with Becca
-        # try:
-        #     response = requests.post(self.webhook_url, timeout=10)
-        #     if response.status_code == 200:
-        #         print("  Webhook triggered successfully!", flush=True)
-        #         self.total_triggers += 1
-        #     else:
-        #         print(f"  Failed (status: {response.status_code})", flush=True)
-        # except Exception as e:
-        #     print(f"  Webhook error: {e}", flush=True)
-        print("  [WEBHOOK DISABLED - dry run mode]", flush=True)
-        self.total_triggers += 1
+        try:
+            response = requests.post(self.webhook_url, timeout=10)
+            if response.status_code == 200:
+                print("  Webhook triggered successfully!", flush=True)
+                self.total_triggers += 1
+            else:
+                print(f"  Failed (status: {response.status_code})", flush=True)
+        except Exception as e:
+            print(f"  Webhook error: {e}", flush=True)
 
         print("*" * 60 + "\n", flush=True)
 
@@ -504,8 +501,8 @@ Examples:
 
     parser.add_argument('--threshold', type=float, default=0.93,
                         help='Confidence threshold 0-1 (default: 0.93)')
-    parser.add_argument('--clicks-per-group', type=int, default=2,
-                        help='Clicks per group in the pattern (default: 2)')
+    parser.add_argument('--clicks-per-group', type=int, default=3,
+                        help='Clicks per group in the pattern (default: 3)')
     parser.add_argument('--group-timeout', type=float, default=3.0,
                         help='Seconds without click before group resets (default: 3.0)')
     parser.add_argument('--pause-min', type=float, default=0.2,
