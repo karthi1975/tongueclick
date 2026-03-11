@@ -7,14 +7,14 @@ Random Forest model. After detecting consecutive clicks, triggers a
 Home Assistant webhook to fire an alarm/bell.
 
 Usage:
-    # Run with defaults (3-pause-3 pattern, 0.93 confidence)
+    # Run with defaults (2-pause-3 pattern, 0.90 confidence)
     python call_for_attention.py
 
     # Use Jabra mic at 16kHz with 16k model
     python call_for_attention.py --device 2 --sample-rate 16000 --model-dir models_16k
 
-    # Custom pattern: 4 clicks, pause, 4 clicks
-    python call_for_attention.py --clicks-per-group 4
+    # Custom pattern: 3 clicks, pause, 3 clicks
+    python call_for_attention.py --clicks-group1 3 --clicks-group2 3
 
     # Adjust pause window
     python call_for_attention.py --pause-min 0.5 --pause-max 3.0
@@ -60,7 +60,8 @@ class CallForAttention:
                  confidence_threshold=0.90,
                  min_energy=0.02,
                  webhook_url='https://ut-beachhome.homeadapt.us/api/webhook/tongue_click_alert',
-                 clicks_per_group=3,
+                 clicks_group1=2,
+                 clicks_group2=3,
                  group_timeout=3.0,
                  pause_min=0.2,
                  pause_max=5.0,
@@ -76,7 +77,8 @@ class CallForAttention:
             confidence_threshold: Minimum confidence for detection (0-1)
             min_energy: Minimum energy threshold to process audio
             webhook_url: Home Assistant webhook URL
-            clicks_per_group: Number of clicks in each group of the pattern
+            clicks_group1: Number of clicks in first group
+            clicks_group2: Number of clicks in second group (confirmation)
             group_timeout: Seconds without click before a group resets
             pause_min: Minimum pause between groups (seconds)
             pause_max: Maximum pause between groups (seconds)
@@ -90,7 +92,8 @@ class CallForAttention:
         self.confidence_threshold = confidence_threshold
         self.min_energy = min_energy
         self.webhook_url = webhook_url
-        self.clicks_per_group = clicks_per_group
+        self.clicks_group1 = clicks_group1
+        self.clicks_group2 = clicks_group2
         self.group_timeout = group_timeout
         self.pause_min = pause_min
         self.pause_max = pause_max
@@ -240,9 +243,8 @@ class CallForAttention:
         print("\n" + "*" * 60, flush=True)
         print("*" * 60, flush=True)
         print(f"  RHYTHM RECOGNIZED! "
-              f"({self.clicks_per_group} clicks - pause - "
-              f"{self.clicks_per_group} clicks)", flush=True)
-        print(f"  >>> This WILL fire the webhook when enabled <<<", flush=True)
+              f"({self.clicks_group1} clicks - pause - "
+              f"{self.clicks_group2} clicks)", flush=True)
         print(f"  Trigger #{self.total_triggers + 1} | "
               f"{datetime.now().strftime('%H:%M:%S')}", flush=True)
         print("*" * 60, flush=True)
@@ -292,10 +294,10 @@ class CallForAttention:
         if self.state == self.STATE_WAITING_FIRST_GROUP:
             self.click_times.append(current_time)
             count = len(self.click_times)
-            print(f"  GROUP 1: click {count}/{self.clicks_per_group} | "
+            print(f"  GROUP 1: click {count}/{self.clicks_group1} | "
                   f"Conf: {confidence:.1%}{save_info}", flush=True)
 
-            if count >= self.clicks_per_group:
+            if count >= self.clicks_group1:
                 # Check rhythm of first group
                 if self._check_rhythm(self.click_times):
                     self.first_group_end_time = current_time
@@ -303,7 +305,7 @@ class CallForAttention:
                     self.click_times = []
                     print(f"  >> Group 1 complete! Now PAUSE for "
                           f"{self.pause_min}-{self.pause_max}s, "
-                          f"then {self.clicks_per_group} more clicks...",
+                          f"then {self.clicks_group2} more clicks...",
                           flush=True)
                 else:
                     self.false_rhythm_count += 1
@@ -320,7 +322,7 @@ class CallForAttention:
                 # Pause was valid, this click starts group 2
                 self.state = self.STATE_WAITING_SECOND_GROUP
                 self.click_times = [current_time]
-                print(f"  GROUP 2: click 1/{self.clicks_per_group} | "
+                print(f"  GROUP 2: click 1/{self.clicks_group2} | "
                       f"Conf: {confidence:.1%} | "
                       f"Pause was {pause_duration:.1f}s{save_info}",
                       flush=True)
@@ -328,10 +330,10 @@ class CallForAttention:
         elif self.state == self.STATE_WAITING_SECOND_GROUP:
             self.click_times.append(current_time)
             count = len(self.click_times)
-            print(f"  GROUP 2: click {count}/{self.clicks_per_group} | "
+            print(f"  GROUP 2: click {count}/{self.clicks_group2} | "
                   f"Conf: {confidence:.1%}{save_info}", flush=True)
 
-            if count >= self.clicks_per_group:
+            if count >= self.clicks_group2:
                 # Check rhythm of second group
                 if self._check_rhythm(self.click_times):
                     self._trigger_webhook()
@@ -410,9 +412,9 @@ class CallForAttention:
         print(f"Started      : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"Sample rate  : {self.sample_rate} Hz")
         print(f"Confidence   : {self.confidence_threshold:.0%}")
-        print(f"Pattern      : {self.clicks_per_group} clicks, "
+        print(f"Pattern      : {self.clicks_group1} clicks, "
               f"pause {self.pause_min}-{self.pause_max}s, "
-              f"{self.clicks_per_group} clicks")
+              f"{self.clicks_group2} clicks")
         print(f"Rhythm check : CV <= {self.rhythm_max_cv}")
         print(f"Group timeout: {self.group_timeout}s")
         print(f"Debounce     : {self.debounce_interval}s between clicks")
@@ -423,8 +425,8 @@ class CallForAttention:
             print(f"Device       : {self.device}")
         print("=" * 60)
         print(f"\nListening... pattern: "
-              f"{self.clicks_per_group} clicks -> pause -> "
-              f"{self.clicks_per_group} clicks")
+              f"{self.clicks_group1} clicks -> pause -> "
+              f"{self.clicks_group2} clicks")
         print("Press Ctrl+C to stop\n", flush=True)
 
         self.start_time = time.time()
@@ -509,14 +511,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run with defaults (3-pause-3 pattern, 0.93 confidence)
+  # Run with defaults (2-pause-3 pattern, 0.90 confidence)
   python call_for_attention.py
 
   # Use Jabra mic at 16kHz with 16k model
   python call_for_attention.py --device 2 --sample-rate 16000 --model-dir models_16k
 
-  # Custom pattern: 2 clicks, pause, 2 clicks (easier for user)
-  python call_for_attention.py --clicks-per-group 2
+  # Custom pattern: 3 clicks, pause, 3 clicks
+  python call_for_attention.py --clicks-group1 3 --clicks-group2 3
 
   # Stricter rhythm and threshold
   python call_for_attention.py --threshold 0.95 --rhythm-max-cv 0.3
@@ -531,8 +533,10 @@ Examples:
 
     parser.add_argument('--threshold', type=float, default=0.90,
                         help='Confidence threshold 0-1 (default: 0.90)')
-    parser.add_argument('--clicks-per-group', type=int, default=3,
-                        help='Clicks per group in the pattern (default: 3)')
+    parser.add_argument('--clicks-group1', type=int, default=2,
+                        help='Clicks in first group (default: 2)')
+    parser.add_argument('--clicks-group2', type=int, default=3,
+                        help='Clicks in second group (default: 3)')
     parser.add_argument('--group-timeout', type=float, default=3.0,
                         help='Seconds without click before group resets (default: 3.0)')
     parser.add_argument('--pause-min', type=float, default=0.2,
@@ -574,7 +578,8 @@ Examples:
             confidence_threshold=args.threshold,
             min_energy=args.min_energy,
             webhook_url=args.webhook_url,
-            clicks_per_group=args.clicks_per_group,
+            clicks_group1=args.clicks_group1,
+            clicks_group2=args.clicks_group2,
             group_timeout=args.group_timeout,
             pause_min=args.pause_min,
             pause_max=args.pause_max,
