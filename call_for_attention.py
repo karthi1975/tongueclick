@@ -57,7 +57,7 @@ class CallForAttention:
     def __init__(self, model_path='models/tongue_click_model.pkl',
                  scaler_path='models/scaler.pkl',
                  sample_rate=44100,
-                 confidence_threshold=0.93,
+                 confidence_threshold=0.90,
                  min_energy=0.02,
                  webhook_url='https://ut-beachhome.homeadapt.us/api/webhook/tongue_click_alert',
                  clicks_per_group=3,
@@ -122,6 +122,8 @@ class CallForAttention:
         self.last_click_time = 0
         self.start_time = None
         self.restart_count = 0
+        self.overflow_count = 0
+        self.needs_restart = False
         self.running = True
 
         # Audio processing queue (threaded to prevent input overflow)
@@ -343,7 +345,16 @@ class CallForAttention:
     def _audio_callback(self, indata, frames, time_info, status):
         """Quickly copy audio to queue -- no heavy processing here."""
         if status:
+            status_str = str(status)
             print(f"  Stream status: {status}", flush=True)
+            if 'overflow' in status_str.lower():
+                self.overflow_count += 1
+                if self.overflow_count >= 10:
+                    print("  [WARNING] Too many overflows, will restart...",
+                          flush=True)
+                    self.needs_restart = True
+            else:
+                self.overflow_count = 0
         try:
             self.audio_queue.put_nowait(indata[:, 0].copy())
         except queue.Full:
@@ -432,6 +443,13 @@ class CallForAttention:
             ):
                 while self.running:
                     sd.sleep(1000)
+                    if self.needs_restart:
+                        print("\n  [AUTO-RESTART] Restarting due to overflow...\n",
+                              flush=True)
+                        self.needs_restart = False
+                        self.overflow_count = 0
+                        self._reset_state("")
+                        break
 
         except KeyboardInterrupt:
             print("\n\nStopped by user")
@@ -453,6 +471,12 @@ class CallForAttention:
             processor.join(timeout=2)
             if not self.running:
                 self._print_summary()
+
+        # Auto-restart after overflow break
+        if self.running:
+            self.restart_count += 1
+            self.stop_event.clear()
+            return self.run()
 
     def _print_summary(self):
         """Print session summary."""
@@ -505,8 +529,8 @@ Examples:
         """
     )
 
-    parser.add_argument('--threshold', type=float, default=0.93,
-                        help='Confidence threshold 0-1 (default: 0.93)')
+    parser.add_argument('--threshold', type=float, default=0.90,
+                        help='Confidence threshold 0-1 (default: 0.90)')
     parser.add_argument('--clicks-per-group', type=int, default=3,
                         help='Clicks per group in the pattern (default: 3)')
     parser.add_argument('--group-timeout', type=float, default=3.0,
