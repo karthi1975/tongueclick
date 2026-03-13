@@ -301,5 +301,122 @@ class TestPatternDetection(unittest.TestCase):
             self.assertEqual(listener.state, 'waiting_first_group')
 
 
+    def test_sustained_audio_suppresses(self):
+        """Rapid detections (podcast/TV) should be suppressed."""
+        # Set max to 3 so we hit suppression before a pattern completes
+        listener = self._make_listener(sustained_max_clicks=3, sustained_window=30.0)
+
+        with patch.object(listener, '_save_audio', return_value=None):
+            base = time.time()
+
+            # Simulate 5 detections in quick succession (podcast)
+            for i in range(5):
+                with patch('time.time', return_value=base + i * 1.0):
+                    listener.last_click_time = base + i * 1.0 - 0.5 if i > 0 else 0
+                    listener._on_click_detected(self.AUDIO, 0.95)
+
+            # After exceeding sustained_max_clicks, suppression should have kicked in
+            self.assertEqual(listener.state, 'waiting_first_group')
+            self.assertGreater(listener.sustained_suppressed, 0)
+
+    def test_sustained_filter_clears_after_window(self):
+        """After quiet period, sustained filter should allow clicks again."""
+        listener = self._make_listener(sustained_max_clicks=5, sustained_window=10.0)
+
+        with patch.object(listener, '_trigger_webhook') as mock_trigger, \
+             patch.object(listener, '_save_audio', return_value=None):
+
+            base = time.time()
+
+            # Simulate 6 rapid detections (suppressed)
+            for i in range(6):
+                with patch('time.time', return_value=base + i * 1.0):
+                    listener.last_click_time = base + i * 1.0 - 0.5 if i > 0 else 0
+                    listener._on_click_detected(self.AUDIO, 0.95)
+
+            self.assertGreater(listener.sustained_suppressed, 0)
+
+            # Wait beyond the window (>10s), then do valid pattern
+            quiet_start = base + 60.0  # well past window
+
+            # Group 1: 2 clicks
+            with patch('time.time', return_value=quiet_start):
+                listener.last_click_time = 0
+                listener._on_click_detected(self.AUDIO, 0.95)
+            with patch('time.time', return_value=quiet_start + 0.5):
+                listener.last_click_time = quiet_start
+                listener._on_click_detected(self.AUDIO, 0.95)
+
+            self.assertEqual(listener.state, 'waiting_pause')
+
+    def test_trigger_cooldown(self):
+        """After a trigger, clicks within cooldown should be ignored."""
+        listener = self._make_listener(trigger_cooldown=30.0)
+
+        with patch.object(listener, '_trigger_webhook'), \
+             patch.object(listener, '_save_audio', return_value=None):
+
+            base = time.time()
+
+            # Complete full pattern to trigger
+            with patch('time.time', return_value=base):
+                listener._on_click_detected(self.AUDIO, 0.95)
+            with patch('time.time', return_value=base + 0.5):
+                listener.last_click_time = base
+                listener._on_click_detected(self.AUDIO, 0.95)
+            # Pause then group 2
+            with patch('time.time', return_value=base + 1.5):
+                listener.last_click_time = base + 0.5
+                listener._on_click_detected(self.AUDIO, 0.95)
+            with patch('time.time', return_value=base + 2.0):
+                listener.last_click_time = base + 1.5
+                listener._on_click_detected(self.AUDIO, 0.95)
+            with patch('time.time', return_value=base + 2.5):
+                listener.last_click_time = base + 2.0
+                listener._on_click_detected(self.AUDIO, 0.95)
+
+            # _trigger_webhook is mocked, so manually set cooldown
+            listener.last_trigger_time = base + 2.5
+            old_clicks = listener.total_clicks
+
+            # Click during cooldown (10s < 30s) should be ignored
+            with patch('time.time', return_value=base + 10.0):
+                listener.last_click_time = base + 2.5
+                listener._on_click_detected(self.AUDIO, 0.95)
+
+            self.assertEqual(listener.total_clicks, old_clicks)
+
+    def test_normal_clicks_not_suppressed(self):
+        """Becca's normal pattern (few clicks) should not trigger podcast filter."""
+        listener = self._make_listener(sustained_max_clicks=8, sustained_window=60.0)
+
+        with patch.object(listener, '_trigger_webhook') as mock_trigger, \
+             patch.object(listener, '_save_audio', return_value=None):
+
+            base = time.time()
+
+            # Group 1: 2 clicks
+            with patch('time.time', return_value=base):
+                listener._on_click_detected(self.AUDIO, 0.95)
+            with patch('time.time', return_value=base + 0.5):
+                listener.last_click_time = base
+                listener._on_click_detected(self.AUDIO, 0.95)
+
+            # Pause then Group 2: 3 clicks
+            with patch('time.time', return_value=base + 1.5):
+                listener.last_click_time = base + 0.5
+                listener._on_click_detected(self.AUDIO, 0.95)
+            with patch('time.time', return_value=base + 2.0):
+                listener.last_click_time = base + 1.5
+                listener._on_click_detected(self.AUDIO, 0.95)
+            with patch('time.time', return_value=base + 2.5):
+                listener.last_click_time = base + 2.0
+                listener._on_click_detected(self.AUDIO, 0.95)
+
+            # 5 total detections < 8 max, should not be suppressed
+            self.assertEqual(listener.sustained_suppressed, 0)
+            mock_trigger.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -68,7 +68,10 @@ class CallForAttention:
                  rhythm_max_cv=0.8,
                  debounce_interval=0.15,
                  save_clicks=True,
-                 device=None):
+                 device=None,
+                 sustained_max_clicks=8,
+                 sustained_window=60.0,
+                 trigger_cooldown=30.0):
         """
         Args:
             model_path: Path to trained model
@@ -86,6 +89,9 @@ class CallForAttention:
             debounce_interval: Minimum seconds between click detections
             save_clicks: Whether to save detected click audio files
             device: Audio input device index
+            sustained_max_clicks: Max clicks in window before suppressing (podcast filter)
+            sustained_window: Rolling window in seconds for sustained audio detection
+            trigger_cooldown: Seconds to wait after a trigger before allowing another
         """
         self.sample_rate = sample_rate
         self.model_sample_rate = 44100
@@ -101,6 +107,9 @@ class CallForAttention:
         self.debounce_interval = debounce_interval
         self.save_clicks = save_clicks
         self.device = device
+        self.sustained_max_clicks = sustained_max_clicks
+        self.sustained_window = sustained_window
+        self.trigger_cooldown = trigger_cooldown
 
         # Load model and scaler
         print("Loading ML model...")
@@ -128,6 +137,9 @@ class CallForAttention:
         self.overflow_count = 0
         self.needs_restart = False
         self.running = True
+        self.last_trigger_time = 0
+        self.recent_detections = []  # timestamps for sustained audio detection
+        self.sustained_suppressed = 0
 
         # Audio processing queue (threaded to prevent input overflow)
         self.audio_queue = queue.Queue(maxsize=50)
@@ -250,6 +262,8 @@ class CallForAttention:
         print("*" * 60, flush=True)
         print("*" * 60, flush=True)
 
+        self.last_trigger_time = time.time()
+
         try:
             response = requests.post(self.webhook_url, timeout=10)
             if response.status_code == 200:
@@ -260,6 +274,8 @@ class CallForAttention:
         except Exception as e:
             print(f"  Webhook error: {e}", flush=True)
 
+        print(f"  Cooldown: {self.trigger_cooldown:.0f}s before next trigger",
+              flush=True)
         print("*" * 60 + "\n", flush=True)
 
     def _save_audio(self, audio, confidence):
@@ -283,6 +299,29 @@ class CallForAttention:
         # Debounce
         if current_time - self.last_click_time < self.debounce_interval:
             return
+
+        # Cooldown after trigger (prevent re-firing immediately)
+        if self.last_trigger_time and (current_time - self.last_trigger_time) < self.trigger_cooldown:
+            return
+
+        # Sustained audio detection (podcast/TV filter)
+        self.recent_detections.append(current_time)
+        # Trim old detections outside the window
+        cutoff = current_time - self.sustained_window
+        self.recent_detections = [t for t in self.recent_detections if t > cutoff]
+        if len(self.recent_detections) > self.sustained_max_clicks:
+            if self.sustained_suppressed == 0:
+                print(f"  [PODCAST FILTER] {len(self.recent_detections)} detections "
+                      f"in {self.sustained_window:.0f}s — suppressing "
+                      f"(likely TV/podcast, not tongue click)", flush=True)
+            self.sustained_suppressed += 1
+            self._reset_state("")
+            return
+
+        if self.sustained_suppressed > 0:
+            print(f"  [PODCAST FILTER] Resumed after suppressing "
+                  f"{self.sustained_suppressed} detection(s)", flush=True)
+            self.sustained_suppressed = 0
 
         self.last_click_time = current_time
         self.total_clicks += 1
@@ -418,6 +457,9 @@ class CallForAttention:
         print(f"Rhythm check : CV <= {self.rhythm_max_cv}")
         print(f"Group timeout: {self.group_timeout}s")
         print(f"Debounce     : {self.debounce_interval}s between clicks")
+        print(f"Podcast filter: suppress if >{self.sustained_max_clicks} "
+              f"clicks in {self.sustained_window:.0f}s")
+        print(f"Cooldown     : {self.trigger_cooldown:.0f}s after trigger")
         print(f"Webhook      : {self.webhook_url}")
         if self.save_clicks:
             print(f"Saving clips : {self.save_dir}/")
@@ -495,6 +537,7 @@ class CallForAttention:
         print(f"Webhooks triggered: {self.total_triggers}")
         print(f"State at stop     : {self.state} ({len(self.click_times)} clicks)")
         print(f"Rhythm rejects    : {self.false_rhythm_count}")
+        print(f"Podcast suppressed: {self.sustained_suppressed}")
         print(f"Chunks filtered   : {self.filtered_count}")
         print(f"Restarts          : {self.restart_count}")
         if self.save_clicks:
@@ -558,6 +601,12 @@ Examples:
                         help='Minimum energy threshold (default: 0.02)')
     parser.add_argument('--device', type=int, default=None,
                         help='Audio input device index')
+    parser.add_argument('--sustained-max', type=int, default=8,
+                        help='Max clicks in window before suppressing (default: 8)')
+    parser.add_argument('--sustained-window', type=float, default=60.0,
+                        help='Rolling window seconds for podcast filter (default: 60)')
+    parser.add_argument('--trigger-cooldown', type=float, default=30.0,
+                        help='Seconds to wait after trigger before allowing another (default: 30)')
     parser.add_argument('--no-save', action='store_true',
                         help='Do not save detected click audio files')
     parser.add_argument('--list-devices', action='store_true',
@@ -587,6 +636,9 @@ Examples:
             debounce_interval=args.debounce,
             save_clicks=not args.no_save,
             device=args.device,
+            sustained_max_clicks=args.sustained_max,
+            sustained_window=args.sustained_window,
+            trigger_cooldown=args.trigger_cooldown,
         )
         listener.run()
 
