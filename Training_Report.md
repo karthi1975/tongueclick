@@ -81,3 +81,7 @@ But audio augmentation works great — creating slightly modified versions (pitc
   - Time stretching (slightly faster/slower)
   - Adding background noise
   - Volume variation
+
+
+git pull origin main                        
+python ml_detector.py --mode realtime --duration 99999 --threshold 0.7 --device 2 --sample-rate 16000 --model-dir models_16k     

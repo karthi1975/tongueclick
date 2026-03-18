@@ -71,7 +71,8 @@ class CallForAttention:
                  device=None,
                  sustained_max_clicks=8,
                  sustained_window=60.0,
-                 trigger_cooldown=30.0):
+                 trigger_cooldown=30.0,
+                 dry_run=False):
         """
         Args:
             model_path: Path to trained model
@@ -110,6 +111,7 @@ class CallForAttention:
         self.sustained_max_clicks = sustained_max_clicks
         self.sustained_window = sustained_window
         self.trigger_cooldown = trigger_cooldown
+        self.dry_run = dry_run
 
         # Load model and scaler
         print("Loading ML model...")
@@ -263,16 +265,19 @@ class CallForAttention:
         print("*" * 60, flush=True)
 
         self.last_trigger_time = time.time()
+        self.total_triggers += 1
 
-        try:
-            response = requests.post(self.webhook_url, timeout=10)
-            if response.status_code == 200:
-                print("  Webhook triggered successfully!", flush=True)
-                self.total_triggers += 1
-            else:
-                print(f"  Failed (status: {response.status_code})", flush=True)
-        except Exception as e:
-            print(f"  Webhook error: {e}", flush=True)
+        if self.dry_run:
+            print("  [DRY RUN] Webhook skipped", flush=True)
+        else:
+            try:
+                response = requests.post(self.webhook_url, timeout=10)
+                if response.status_code == 200:
+                    print("  Webhook triggered successfully!", flush=True)
+                else:
+                    print(f"  Failed (status: {response.status_code})", flush=True)
+            except Exception as e:
+                print(f"  Webhook error: {e}", flush=True)
 
         print(f"  Cooldown: {self.trigger_cooldown:.0f}s before next trigger",
               flush=True)
@@ -460,6 +465,8 @@ class CallForAttention:
         print(f"Podcast filter: suppress if >{self.sustained_max_clicks} "
               f"clicks in {self.sustained_window:.0f}s")
         print(f"Cooldown     : {self.trigger_cooldown:.0f}s after trigger")
+        if self.dry_run:
+            print(f"Mode         : DRY RUN (no webhook)")
         print(f"Webhook      : {self.webhook_url}")
         if self.save_clicks:
             print(f"Saving clips : {self.save_dir}/")
@@ -609,6 +616,8 @@ Examples:
                         help='Seconds to wait after trigger before allowing another (default: 30)')
     parser.add_argument('--no-save', action='store_true',
                         help='Do not save detected click audio files')
+    parser.add_argument('--dry-run', action='store_true',
+                        help='Detect clicks but do not trigger webhook')
     parser.add_argument('--list-devices', action='store_true',
                         help='List available audio devices and exit')
 
@@ -639,6 +648,7 @@ Examples:
             sustained_max_clicks=args.sustained_max,
             sustained_window=args.sustained_window,
             trigger_cooldown=args.trigger_cooldown,
+            dry_run=args.dry_run,
         )
         listener.run()
 
