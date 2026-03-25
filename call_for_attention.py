@@ -57,20 +57,21 @@ class CallForAttention:
     def __init__(self, model_path='models/tongue_click_model.pkl',
                  scaler_path='models/scaler.pkl',
                  sample_rate=44100,
-                 confidence_threshold=0.90,
+                 confidence_threshold=0.97,
                  min_energy=0.02,
                  webhook_url='https://ut-beachhome.homeadapt.us/api/webhook/tongue_click_alert',
                  clicks_group1=2,
                  clicks_group2=3,
                  group_timeout=3.0,
                  pause_min=0.2,
-                 pause_max=5.0,
-                 rhythm_max_cv=0.8,
+                 pause_max=8.0,
+                 rhythm_max_cv=0.6,
                  debounce_interval=0.15,
                  save_clicks=True,
                  device=None,
-                 sustained_max_clicks=8,
-                 sustained_window=60.0,
+                 sustained_max_clicks=15,
+                 sustained_window=120.0,
+                 sustained_resume_gap=5.0,
                  trigger_cooldown=30.0,
                  dry_run=False):
         """
@@ -110,6 +111,7 @@ class CallForAttention:
         self.device = device
         self.sustained_max_clicks = sustained_max_clicks
         self.sustained_window = sustained_window
+        self.sustained_resume_gap = sustained_resume_gap
         self.trigger_cooldown = trigger_cooldown
         self.dry_run = dry_run
 
@@ -310,6 +312,20 @@ class CallForAttention:
             return
 
         # Sustained audio detection (podcast/TV filter)
+        # If suppressed but quiet for sustained_resume_gap, resume immediately
+        if self.sustained_suppressed > 0:
+            gap = current_time - self.recent_detections[-1] if self.recent_detections else float('inf')
+            if gap >= self.sustained_resume_gap:
+                print(f"  [PODCAST FILTER] Resumed after {gap:.1f}s quiet "
+                      f"(suppressed {self.sustained_suppressed} detection(s))", flush=True)
+                self.sustained_suppressed = 0
+                self.recent_detections = [current_time]
+            else:
+                self.sustained_suppressed += 1
+                self._reset_state("")
+                self.recent_detections.append(current_time)
+                return
+
         self.recent_detections.append(current_time)
         # Trim old detections outside the window
         cutoff = current_time - self.sustained_window
@@ -322,11 +338,6 @@ class CallForAttention:
             self.sustained_suppressed += 1
             self._reset_state("")
             return
-
-        if self.sustained_suppressed > 0:
-            print(f"  [PODCAST FILTER] Resumed after suppressing "
-                  f"{self.sustained_suppressed} detection(s)", flush=True)
-            self.sustained_suppressed = 0
 
         self.last_click_time = current_time
         self.total_clicks += 1
@@ -463,7 +474,8 @@ class CallForAttention:
         print(f"Group timeout: {self.group_timeout}s")
         print(f"Debounce     : {self.debounce_interval}s between clicks")
         print(f"Podcast filter: suppress if >{self.sustained_max_clicks} "
-              f"clicks in {self.sustained_window:.0f}s")
+              f"clicks in {self.sustained_window:.0f}s, "
+              f"resume after {self.sustained_resume_gap:.0f}s quiet")
         print(f"Cooldown     : {self.trigger_cooldown:.0f}s after trigger")
         if self.dry_run:
             print(f"Mode         : DRY RUN (no webhook)")
@@ -581,8 +593,8 @@ Examples:
         """
     )
 
-    parser.add_argument('--threshold', type=float, default=0.90,
-                        help='Confidence threshold 0-1 (default: 0.90)')
+    parser.add_argument('--threshold', type=float, default=0.97,
+                        help='Confidence threshold 0-1 (default: 0.97)')
     parser.add_argument('--clicks-group1', type=int, default=2,
                         help='Clicks in first group (default: 2)')
     parser.add_argument('--clicks-group2', type=int, default=3,
@@ -591,10 +603,10 @@ Examples:
                         help='Seconds without click before group resets (default: 3.0)')
     parser.add_argument('--pause-min', type=float, default=0.2,
                         help='Minimum pause between groups (default: 0.2s)')
-    parser.add_argument('--pause-max', type=float, default=5.0,
-                        help='Maximum pause between groups (default: 5.0s)')
-    parser.add_argument('--rhythm-max-cv', type=float, default=0.8,
-                        help='Max coefficient of variation for rhythm (default: 0.8)')
+    parser.add_argument('--pause-max', type=float, default=8.0,
+                        help='Maximum pause between groups (default: 8.0s)')
+    parser.add_argument('--rhythm-max-cv', type=float, default=0.6,
+                        help='Max coefficient of variation for rhythm (default: 0.6)')
     parser.add_argument('--debounce', type=float, default=0.15,
                         help='Minimum seconds between clicks (default: 0.15)')
     parser.add_argument('--webhook-url', type=str,
@@ -608,10 +620,12 @@ Examples:
                         help='Minimum energy threshold (default: 0.02)')
     parser.add_argument('--device', type=int, default=None,
                         help='Audio input device index')
-    parser.add_argument('--sustained-max', type=int, default=8,
-                        help='Max clicks in window before suppressing (default: 8)')
-    parser.add_argument('--sustained-window', type=float, default=60.0,
-                        help='Rolling window seconds for podcast filter (default: 60)')
+    parser.add_argument('--sustained-max', type=int, default=15,
+                        help='Max clicks in window before suppressing (default: 15)')
+    parser.add_argument('--sustained-window', type=float, default=120.0,
+                        help='Rolling window seconds for podcast filter (default: 120)')
+    parser.add_argument('--sustained-resume-gap', type=float, default=5.0,
+                        help='Seconds of quiet before resuming from podcast filter (default: 5)')
     parser.add_argument('--trigger-cooldown', type=float, default=30.0,
                         help='Seconds to wait after trigger before allowing another (default: 30)')
     parser.add_argument('--no-save', action='store_true',
@@ -647,6 +661,7 @@ Examples:
             device=args.device,
             sustained_max_clicks=args.sustained_max,
             sustained_window=args.sustained_window,
+            sustained_resume_gap=args.sustained_resume_gap,
             trigger_cooldown=args.trigger_cooldown,
             dry_run=args.dry_run,
         )

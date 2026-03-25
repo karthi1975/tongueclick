@@ -11,14 +11,16 @@ import sounddevice as sd
 import soundfile as sf
 import argparse
 import os
+import signal
 import time
+import queue
 from datetime import datetime
 
 
 def collect(label, output_dir='training_data/auto_collected',
             duration=60, chunk_duration=0.5, sample_rate=44100,
             min_energy=0.005, device=None):
-    """Record and save hard negative samples in chunks."""
+    """Record and save hard negative samples using streaming (Ctrl+C safe)."""
     os.makedirs(output_dir, exist_ok=True)
 
     print(f"\n{'='*70}")
@@ -30,47 +32,67 @@ def collect(label, output_dir='training_data/auto_collected',
     print(f"Min energy   : {min_energy}")
     print(f"{'='*70}")
     print(f"\nMake '{label}' sounds continuously for {duration} seconds.")
-    print(f"Press Ctrl+C to stop early.\n")
+    print(f"Press Ctrl+C to stop anytime.\n")
 
     input("Press Enter to start recording...")
 
     chunk_samples = int(chunk_duration * sample_rate)
     saved = 0
     skipped = 0
+    running = True
+    audio_q = queue.Queue()
+
+    def sig_handler(signum, frame):
+        nonlocal running
+        running = False
+
+    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGTERM, sig_handler)
+
+    def callback(indata, frames, time_info, status):
+        if status:
+            print(f"  Stream status: {status}", flush=True)
+        audio_q.put(indata[:, 0].copy())
 
     print(f"RECORDING... make '{label}' sounds now!\n")
+    start_time = time.time()
 
     try:
-        # Record full duration
-        total_samples = int(duration * sample_rate)
-        audio = sd.rec(total_samples, samplerate=sample_rate,
-                       channels=1, dtype='float32', device=device)
-        sd.wait()
+        with sd.InputStream(callback=callback, channels=1,
+                            samplerate=sample_rate,
+                            blocksize=chunk_samples,
+                            device=device):
+            while running and (time.time() - start_time) < duration:
+                try:
+                    chunk = audio_q.get(timeout=0.5)
+                except queue.Empty:
+                    continue
 
-        print("Recording done. Processing chunks...\n")
+                energy = np.max(np.abs(chunk))
+                elapsed = time.time() - start_time
 
-        # Split into chunks and save those with enough energy
-        for i in range(0, len(audio) - chunk_samples, chunk_samples):
-            chunk = audio[i:i + chunk_samples].flatten()
-            energy = np.max(np.abs(chunk))
+                if energy >= min_energy:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                    filename = f"neg_{label}_{timestamp}_{saved}.wav"
+                    filepath = os.path.join(output_dir, filename)
+                    sf.write(filepath, chunk, sample_rate)
+                    saved += 1
+                    if saved % 10 == 0:
+                        print(f"  [{elapsed:.0f}s] Saved {saved} chunks...",
+                              flush=True)
+                else:
+                    skipped += 1
 
-            if energy >= min_energy:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                filename = f"neg_{label}_{timestamp}_{saved}.wav"
-                filepath = os.path.join(output_dir, filename)
-                sf.write(filepath, chunk, sample_rate)
-                saved += 1
-            else:
-                skipped += 1
+    except Exception as e:
+        print(f"\nError: {e}")
 
-    except KeyboardInterrupt:
-        print("\nStopped early.")
-
+    elapsed = time.time() - start_time
     print(f"\n{'='*70}")
     print(f"COLLECTION DONE")
     print(f"{'='*70}")
-    print(f"Saved:   {saved} chunks")
-    print(f"Skipped: {skipped} (below energy threshold)")
+    print(f"Recorded : {elapsed:.0f}s")
+    print(f"Saved    : {saved} chunks")
+    print(f"Skipped  : {skipped} (below energy threshold)")
     print(f"{'='*70}\n")
 
     return saved
