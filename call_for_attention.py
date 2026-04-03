@@ -406,8 +406,8 @@ class CallForAttention:
             print(f"  Stream status: {status}", flush=True)
             if 'overflow' in status_str.lower():
                 self.overflow_count += 1
-                if self.overflow_count >= 10:
-                    print("  [WARNING] Too many overflows, will restart...",
+                if self.overflow_count >= 1:
+                    print("  [WARNING] Overflow detected, will restart stream...",
                           flush=True)
                     self.needs_restart = True
             else:
